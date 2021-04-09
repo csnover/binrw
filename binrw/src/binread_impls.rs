@@ -1,5 +1,5 @@
 use crate::{
-    io::{self, Read, Seek, SeekFrom},
+    io::{self, ErrorKind, Read, Seek, SeekFrom},
     BinRead, BinResult, Endian, Error, ReadOptions,
 };
 use core::any::Any;
@@ -58,11 +58,12 @@ impl BinRead for char {
 
 binread_impl!(u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64);
 
-fn not_enough_bytes<T>(_: T) -> Error {
-    Error::Io(io::Error::new(
-        io::ErrorKind::UnexpectedEof,
-        "not enough bytes in reader",
-    ))
+fn restore_reader<R: Seek, E: Into<Error>>(reader: &mut R, pos: u64, error: E) -> Error {
+    if let Err(seek_error) = reader.seek(SeekFrom::Start(pos)) {
+        Error::Io(seek_error)
+    } else {
+        error.into()
+    }
 }
 
 impl<B: BinRead> BinRead for Vec<B> {
@@ -74,29 +75,47 @@ impl<B: BinRead> BinRead for Vec<B> {
         args: Self::Args,
     ) -> BinResult<Self> {
         let mut options = *options;
-        let count = match options.count.take() {
-            Some(x) => x,
-            None => panic!("Missing count for Vec"),
+        let (capacity, count, until_eof) = match options.count.take() {
+            Some(x) => (x, x, false),
+            None => (0, usize::MAX, true),
         };
 
-        let mut list = Self::with_capacity(count);
+        let pos = reader.seek(SeekFrom::Current(0))?;
+        let mut list = Self::with_capacity(capacity);
 
         if let Some(bytes) = <dyn Any>::downcast_mut::<Vec<u8>>(&mut list) {
             let byte_count = reader
-                .take(count.try_into().map_err(not_enough_bytes)?)
-                .read_to_end(bytes)?;
+                .take(count.try_into().unwrap())
+                .read_to_end(bytes)
+                .map_err(|error| restore_reader(reader, pos, error))?;
 
-            if byte_count == count {
-                Ok(list)
-            } else {
-                Err(not_enough_bytes(()))
+            if !until_eof && byte_count != count {
+                return Err(restore_reader(
+                    reader,
+                    pos,
+                    Error::Io(io::Error::from(io::ErrorKind::UnexpectedEof)),
+                ));
+            }
+        } else if until_eof {
+            loop {
+                match B::read_options(reader, &options, args.clone()) {
+                    Ok(value) => list.push(value),
+                    Err(Error::Io(error)) if error.kind() == ErrorKind::UnexpectedEof => break,
+                    Err(error) => {
+                        return Err(restore_reader(reader, pos, error));
+                    }
+                }
             }
         } else {
             for _ in 0..count {
-                list.push(B::read_options(reader, &options, args.clone())?);
+                list.push(
+                    B::read_options(reader, &options, args.clone())
+                        .map_err(|error| restore_reader(reader, pos, error))?,
+                );
             }
-            Ok(list)
         }
+
+        Ok(list)
     }
 
     fn after_parse<R>(
