@@ -76,7 +76,6 @@ impl<Keyword: syn::token::Token + KeywordToken, Value> KeywordToken for MetaValu
 #[derive(Debug, Clone)]
 pub(crate) struct MetaList<Keyword, ItemType> {
     pub(crate) ident: Keyword,
-    pub(crate) parens: token::Paren,
     pub(crate) fields: Fields<ItemType>,
 }
 
@@ -84,10 +83,9 @@ impl<Keyword: Parse, ItemType: Parse> Parse for MetaList<Keyword, ItemType> {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let ident = input.parse()?;
         let content;
-        let parens = parenthesized!(content in input);
+        parenthesized!(content in input);
         Ok(MetaList {
             ident,
-            parens,
             fields: content.parse_terminated::<_, Token![,]>(ItemType::parse)?,
         })
     }
@@ -110,17 +108,15 @@ impl<Keyword: syn::token::Token + KeywordToken, ItemType> KeywordToken
 #[derive(Debug, Clone)]
 pub(crate) struct IdentPatType {
     pub(crate) ident: syn::Ident,
-    pub(crate) colon_token: Token![:],
     pub(crate) ty: syn::Type,
 }
 
 impl Parse for IdentPatType {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        Ok(IdentPatType {
-            ident: input.parse()?,
-            colon_token: input.parse()?,
-            ty: input.parse()?,
-        })
+        let ident = input.parse()?;
+        input.parse::<Token![:]>()?;
+        let ty = input.parse()?;
+        Ok(IdentPatType { ident, ty })
     }
 }
 
