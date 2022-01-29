@@ -111,7 +111,6 @@ pub(super) fn generate_data_enum(input: &Input, en: &Enum) -> TokenStream {
     };
 
     let prelude = PreludeGenerator::new(input)
-        .add_imports()
         .add_options()
         .add_magic_pre_assertion()
         .reset_position_after_magic()
