@@ -11,7 +11,7 @@ pub(super) fn generate_unit_struct(input: &Input, variant_ident: Option<&Ident>)
     let return_type = get_return_type(variant_ident);
     quote! {
         #prelude
-        Ok(#return_type)
+        #BIN_RESULT::Ok(#return_type)
     }
 }
 
@@ -88,7 +88,7 @@ impl<'input> StructGenerator<'input> {
         let head = self.out;
         self.out = quote! {
             #head
-            Ok(#return_value)
+            #BIN_RESULT::Ok(#return_value)
         };
 
         self

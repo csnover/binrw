@@ -1,5 +1,12 @@
 use binrw::{io::Cursor, BinRead};
 
+// Since proc-macros are unhygienic, make sure they are not generating code that
+// may accidentally use the wrong thing
+#[allow(non_snake_case)]
+fn Ok() {}
+#[allow(non_snake_case)]
+fn Err() {}
+
 #[test]
 fn derive_generic() {
     #[derive(BinRead)]

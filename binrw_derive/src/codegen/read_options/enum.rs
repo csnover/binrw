@@ -25,7 +25,7 @@ fn generate_unit_enum_repr(
         let ident = &variant.ident;
         quote! {
             if #TEMP == Self::#ident as #repr {
-                Ok(Self::#ident)
+                #BIN_RESULT::Ok(Self::#ident)
             }
         }
     });
@@ -36,7 +36,7 @@ fn generate_unit_enum_repr(
         #prelude
         let #TEMP: #repr = #READ_METHOD(#READER, #OPT, ())?;
         #(#clauses else)* {
-            Err(#BIN_ERROR::NoVariantMatch {
+            #BIN_RESULT::Err(#BIN_ERROR::NoVariantMatch {
                 pos: #POS,
             })
         }
@@ -63,7 +63,7 @@ fn generate_unit_enum_magic(
                 let pre_assertions = field.pre_assertions.iter().map(|assert| &assert.condition);
                 quote! { #magic if true #(&& (#pre_assertions))* }
             };
-            Some(quote! { #condition => Ok(Self::#ident) })
+            Some(quote! { #condition => #BIN_RESULT::Ok(Self::#ident) })
         } else {
             None
         }
@@ -78,7 +78,7 @@ fn generate_unit_enum_magic(
         #prelude
         match #amp#READ_METHOD(#READER, #OPT, ())? {
             #(#matches,)*
-            _ => Err(#BIN_ERROR::NoVariantMatch { pos: #POS })
+            _ => #BIN_RESULT::Err(#BIN_ERROR::NoVariantMatch { pos: #POS })
         }
     }
 }
@@ -93,7 +93,7 @@ pub(super) fn generate_data_enum(input: &Input, en: &Enum) -> TokenStream {
                 let mut #ERROR_BASKET: alloc::vec::Vec<(&'static str, #BIN_ERROR)> = alloc::vec::Vec::new();
             },
             quote! {
-                Err(#BIN_ERROR::EnumErrors {
+                #BIN_RESULT::Err(#BIN_ERROR::EnumErrors {
                     pos: #POS,
                     variant_errors: #ERROR_BASKET
                 })
@@ -103,7 +103,7 @@ pub(super) fn generate_data_enum(input: &Input, en: &Enum) -> TokenStream {
         (
             TokenStream::new(),
             quote! {
-                Err(#BIN_ERROR::NoVariantMatch {
+                #BIN_RESULT::Err(#BIN_ERROR::NoVariantMatch {
                     pos: #POS
                 })
             },

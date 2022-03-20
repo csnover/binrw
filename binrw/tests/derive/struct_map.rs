@@ -1,6 +1,13 @@
 use binrw::{io::Cursor, BinRead};
 use core::convert::TryInto;
 
+// Since proc-macros are unhygienic, make sure they are not generating code that
+// may accidentally use the wrong thing
+#[allow(non_snake_case)]
+fn Ok() {}
+#[allow(non_snake_case)]
+fn Err() {}
+
 #[test]
 fn map_closure() {
     #[derive(BinRead, Debug)]
@@ -91,11 +98,11 @@ fn try_map_struct() {
     impl Test {
         fn from_bytes(bytes: [u8; 2]) -> Result<Self, Oops> {
             if bytes[0] == 0 {
-                Ok(Self {
+                Result::Ok(Self {
                     a: i16::from(bytes[0]) | (i16::from(bytes[1]) << 8),
                 })
             } else {
-                Err(Oops)
+                Result::Err(Oops)
             }
         }
     }

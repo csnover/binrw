@@ -4,6 +4,13 @@ use binrw::{
     BinRead, BinResult, FilePtr, NullString, ReadOptions,
 };
 
+// Since proc-macros are unhygienic, make sure they are not generating code that
+// may accidentally use the wrong thing
+#[allow(non_snake_case)]
+fn Ok() {}
+#[allow(non_snake_case)]
+fn Err() {}
+
 #[test]
 fn all_the_things() {
     #[derive(Debug)]
@@ -30,7 +37,7 @@ fn all_the_things() {
         ro: &ReadOptions,
         _: (),
     ) -> BinResult<(u16, u16)> {
-        Ok((
+        BinResult::Ok((
             u16::read_options(reader, ro, ())?,
             u16::read_options(reader, ro, ())?,
         ))

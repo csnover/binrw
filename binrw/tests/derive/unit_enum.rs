@@ -3,6 +3,13 @@ use binrw::{
     BinRead,
 };
 
+// Since proc-macros are unhygienic, make sure they are not generating code that
+// may accidentally use the wrong thing
+#[allow(non_snake_case)]
+fn Ok() {}
+#[allow(non_snake_case)]
+fn Err() {}
+
 #[test]
 fn unit_enum_magic() {
     #[derive(BinRead, Debug, Eq, PartialEq)]

@@ -36,7 +36,7 @@ pub(crate) fn generate(input: &Input) -> TokenStream {
             #inner
         })().or_else(|error| {
             #SEEK_TRAIT::seek(#READER, #SEEK_FROM::Start(#POS))?;
-            Err(error)
+            #BIN_RESULT::Err(error)
         })
     }
 }
