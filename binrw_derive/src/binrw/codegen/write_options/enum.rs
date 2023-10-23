@@ -1,15 +1,19 @@
 use super::{prelude::PreludeGenerator, r#struct::StructGenerator};
 use crate::binrw::{
-    codegen::sanitization::{OPT, WRITER, WRITE_METHOD},
+    codegen::{
+        sanitization::{OPT, WRITER, WRITE_METHOD},
+        PosEmitter,
+    },
     parser::{Enum, EnumVariant, Input, UnitEnumField, UnitOnlyEnum},
 };
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 
-pub(crate) fn generate_unit_enum(
+pub(super) fn generate_unit_enum(
     input: &Input,
     name: Option<&Ident>,
     en: &UnitOnlyEnum,
+    pos_emitter: &PosEmitter,
 ) -> TokenStream {
     let writer_var = input.stream_ident_or(WRITER);
     let write = match en.map.as_repr() {
@@ -17,7 +21,7 @@ pub(crate) fn generate_unit_enum(
         None => generate_unit_enum_magic(&writer_var, &en.fields),
     };
 
-    PreludeGenerator::new(write, input, name, &writer_var)
+    PreludeGenerator::new(write, input, name, &writer_var, pos_emitter)
         .prefix_map_stream()
         .prefix_magic(&en.magic)
         .prefix_assertions()
@@ -26,8 +30,13 @@ pub(crate) fn generate_unit_enum(
         .finish()
 }
 
-pub(crate) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum) -> TokenStream {
-    EnumGenerator::new(input, name, en, input.stream_ident_or(WRITER))
+pub(super) fn generate_data_enum(
+    input: &Input,
+    name: Option<&Ident>,
+    en: &Enum,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    EnumGenerator::new(input, name, en, input.stream_ident_or(WRITER), pos_emitter)
         .write_variants()
         .prefix_prelude()
         .finish()
@@ -39,6 +48,7 @@ struct EnumGenerator<'a> {
     name: Option<&'a Ident>,
     writer_var: TokenStream,
     out: TokenStream,
+    pos_emitter: &'a PosEmitter,
 }
 
 impl<'a> EnumGenerator<'a> {
@@ -47,6 +57,7 @@ impl<'a> EnumGenerator<'a> {
         name: Option<&'a Ident>,
         en: &'a Enum,
         writer_var: TokenStream,
+        pos_emitter: &'a PosEmitter,
     ) -> Self {
         Self {
             input,
@@ -54,6 +65,7 @@ impl<'a> EnumGenerator<'a> {
             en,
             writer_var,
             out: TokenStream::new(),
+            pos_emitter,
         }
     }
 
@@ -70,7 +82,7 @@ impl<'a> EnumGenerator<'a> {
                 EnumVariant::Variant { options, .. } => {
                     let input = Input::Struct(variant.clone().into());
 
-                    StructGenerator::new(&input, options, None, &self.writer_var)
+                    StructGenerator::new(&input, options, None, &self.writer_var, self.pos_emitter)
                         .write_fields()
                         .prefix_prelude()
                         .finish()
@@ -111,7 +123,7 @@ impl<'a> EnumGenerator<'a> {
     fn prefix_prelude(mut self) -> Self {
         let out = self.out;
 
-        self.out = PreludeGenerator::new(out, self.input, self.name, &self.writer_var)
+        self.out = PreludeGenerator::new(out, self.input, self.name, &self.writer_var, self.pos_emitter)
             .prefix_map_stream()
             .prefix_magic(&self.en.magic)
             .prefix_assertions()

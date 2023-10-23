@@ -3,6 +3,7 @@ use crate::binrw::{
     codegen::{
         get_assertions, get_map_err,
         sanitization::{ARGS, OPT, POS, READER, READ_METHOD, THIS},
+        PosEmitter,
     },
     parser::Input,
 };
@@ -10,15 +11,21 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{spanned::Spanned, Ident};
 
-pub(crate) fn generate_map(input: &Input, name: Option<&Ident>, map: &TokenStream) -> TokenStream {
-    let prelude = PreludeGenerator::new(input)
+pub(super) fn generate_map(
+    input: &Input,
+    name: Option<&Ident>,
+    map: &TokenStream,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    let prelude = PreludeGenerator::new(input, pos_emitter)
         .add_imports(name)
         .add_endian()
         .add_magic_pre_assertion()
         .finish();
 
     let destructure_ref = destructure_ref(input);
-    let assertions = field_asserts(input).chain(get_assertions(input.assertions()));
+    let assertions =
+        field_asserts(input, pos_emitter).chain(get_assertions(pos_emitter, input.assertions()));
     let reader_var = input.stream_ident_or(READER);
 
     // TODO: replace args with top-level arguments and only
@@ -42,20 +49,22 @@ pub(crate) fn generate_map(input: &Input, name: Option<&Ident>, map: &TokenStrea
     }
 }
 
-pub(crate) fn generate_try_map(
+pub(super) fn generate_try_map(
     input: &Input,
     name: Option<&Ident>,
     map: &TokenStream,
+    pos_emitter: &PosEmitter,
 ) -> TokenStream {
     let map_err = get_map_err(POS, map.span());
-    let prelude = PreludeGenerator::new(input)
+    let prelude = PreludeGenerator::new(input, pos_emitter)
         .add_imports(name)
         .add_endian()
         .add_magic_pre_assertion()
         .finish();
 
     let destructure_ref = destructure_ref(input);
-    let assertions = field_asserts(input).chain(get_assertions(input.assertions()));
+    let assertions =
+        field_asserts(input, pos_emitter).chain(get_assertions(pos_emitter, input.assertions()));
     let reader_var = input.stream_ident_or(READER);
 
     // TODO: replace args with top-level arguments and only
@@ -100,13 +109,16 @@ fn destructure_ref(input: &Input) -> Option<TokenStream> {
     }
 }
 
-fn field_asserts(input: &Input) -> impl Iterator<Item = TokenStream> + '_ {
+fn field_asserts<'a>(
+    input: &'a Input,
+    pos_emitter: &'a PosEmitter,
+) -> impl Iterator<Item = TokenStream> + 'a {
     match input {
         Input::Struct(input) => either::Left(
             input
                 .fields
                 .iter()
-                .flat_map(|field| get_assertions(&field.assertions)),
+                .flat_map(|field| get_assertions(pos_emitter, &field.assertions)),
         ),
         _ => either::Right(core::iter::empty()),
     }

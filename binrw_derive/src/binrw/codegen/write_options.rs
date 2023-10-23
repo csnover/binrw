@@ -5,7 +5,10 @@ mod struct_field;
 
 use super::get_map_err;
 use crate::binrw::{
-    codegen::sanitization::{OPT, POS, SEEK_TRAIT, WRITER, WRITE_METHOD},
+    codegen::{
+        sanitization::{OPT, POS, WRITER, WRITE_METHOD},
+        PosEmitter,
+    },
     parser::{Input, Map},
 };
 use proc_macro2::TokenStream;
@@ -16,31 +19,35 @@ use syn::{spanned::Spanned, Ident};
 
 pub(crate) fn generate(input: &Input, derive_input: &syn::DeriveInput) -> TokenStream {
     let name = Some(&derive_input.ident);
+    let writer_var = input.stream_ident_or(WRITER);
+    let pos_emitter = PosEmitter::new(&writer_var);
     let inner = match input.map() {
         Map::None => match input {
-            Input::UnitStruct(s) | Input::Struct(s) => generate_struct(input, name, s),
-            Input::Enum(e) => generate_data_enum(input, name, e),
-            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e),
+            Input::UnitStruct(s) | Input::Struct(s) => {
+                generate_struct(input, name, s, &pos_emitter)
+            }
+            Input::Enum(e) => generate_data_enum(input, name, e, &pos_emitter),
+            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e, &pos_emitter),
         },
-        Map::Try(map) | Map::Map(map) => generate_map(input, name, map),
+        Map::Try(map) | Map::Map(map) => generate_map(input, name, map, &pos_emitter),
         Map::Repr(map) => match input {
-            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e),
-            _ => generate_map(input, name, map),
+            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e, &pos_emitter),
+            _ => generate_map(input, name, map, &pos_emitter),
         },
     };
 
-    let writer_var = input.stream_ident_or(WRITER);
-
+    let (set_pos, rewind) = super::get_rewind(input, &writer_var, pos_emitter);
     quote! {
         let #writer_var = #WRITER;
-        let #POS = #SEEK_TRAIT::stream_position(#writer_var)?;
-        #inner
-
-        Ok(())
+        #set_pos
+        (|| {
+            #inner
+            Ok(())
+        })()#rewind
     }
 }
 
-fn generate_map(input: &Input, name: Option<&Ident>, map: &TokenStream) -> TokenStream {
+fn generate_map(input: &Input, name: Option<&Ident>, map: &TokenStream, pos_emitter: &PosEmitter) -> TokenStream {
     let map_try = input.map().is_try().then(|| {
         let map_err = get_map_err(POS, map.span());
         quote! { #map_err? }
@@ -62,7 +69,7 @@ fn generate_map(input: &Input, name: Option<&Ident>, map: &TokenStream) -> Token
 
     let magic = input.magic();
     let endian = input.endian();
-    prelude::PreludeGenerator::new(write_data, input, name, &writer_var)
+    prelude::PreludeGenerator::new(write_data, input, name, &writer_var, pos_emitter)
         .prefix_magic(magic)
         .prefix_assertions()
         .prefix_endian(endian)

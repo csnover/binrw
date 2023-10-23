@@ -1,6 +1,7 @@
 use super::{get_magic, PreludeGenerator};
 #[cfg(feature = "verbose-backtrace")]
 use crate::binrw::backtrace::BacktraceFrame;
+use crate::binrw::codegen::PosEmitter;
 use crate::binrw::parser::Assert;
 use crate::{
     binrw::{
@@ -26,8 +27,9 @@ pub(super) fn generate_unit_struct(
     input: &Input,
     name: Option<&Ident>,
     variant_ident: Option<&Ident>,
+    pos_emitter: &PosEmitter,
 ) -> TokenStream {
-    let prelude = get_prelude(input, name);
+    let prelude = get_prelude(input, name, false, pos_emitter);
     let return_type = get_return_type(variant_ident);
     quote! {
         #prelude
@@ -35,8 +37,13 @@ pub(super) fn generate_unit_struct(
     }
 }
 
-pub(super) fn generate_struct(input: &Input, name: Option<&Ident>, st: &Struct) -> TokenStream {
-    StructGenerator::new(input, st)
+pub(super) fn generate_struct(
+    input: &Input,
+    name: Option<&Ident>,
+    st: &Struct,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    StructGenerator::new(input, st, pos_emitter)
         .read_fields(name, None)
         .initialize_value_with_assertions(None, &[])
         .return_value()
@@ -47,14 +54,20 @@ pub(super) struct StructGenerator<'input> {
     input: &'input Input,
     st: &'input Struct,
     out: TokenStream,
+    pos_emitter: &'input PosEmitter,
 }
 
 impl<'input> StructGenerator<'input> {
-    pub(super) fn new(input: &'input Input, st: &'input Struct) -> Self {
+    pub(super) fn new(
+        input: &'input Input,
+        st: &'input Struct,
+        pos_emitter: &'input PosEmitter,
+    ) -> Self {
         Self {
             input,
             st,
             out: TokenStream::new(),
+            pos_emitter,
         }
     }
 
@@ -85,8 +98,8 @@ impl<'input> StructGenerator<'input> {
     }
 
     fn add_assertions(mut self, extra_assertions: &[Assert]) -> Self {
-        let assertions =
-            get_assertions(&self.st.assertions).chain(get_assertions(extra_assertions));
+        let assertions = get_assertions(self.pos_emitter, &self.st.assertions)
+            .chain(get_assertions(self.pos_emitter, extra_assertions));
         let head = self.out;
         self.out = quote! {
             #head
@@ -97,12 +110,12 @@ impl<'input> StructGenerator<'input> {
     }
 
     pub(super) fn read_fields(mut self, name: Option<&Ident>, variant_name: Option<&str>) -> Self {
-        let prelude = get_prelude(self.input, name);
-        let read_fields = self
-            .st
-            .fields
-            .iter()
-            .map(|field| generate_field(self.input, field, name, variant_name));
+        let prelude = get_prelude(self.input, name, variant_name.is_some(), self.pos_emitter);
+        let mut pos_emitter = Some(self.pos_emitter);
+        let read_fields =
+            self.st.fields.iter().map(|field| {
+                generate_field(self.input, field, name, variant_name, pos_emitter.take())
+            });
         self.out = quote! {
             #prelude
             #(#read_fields)*
@@ -146,13 +159,14 @@ fn generate_field(
     field: &StructField,
     name: Option<&Ident>,
     variant_name: Option<&str>,
+    pos_emitter: Option<&PosEmitter>,
 ) -> TokenStream {
     // temp + ignore == just don't bother
     if field.is_temp(false) && matches!(field.field_mode, FieldMode::Default) {
         return TokenStream::new();
     }
 
-    FieldGenerator::new(input, field)
+    FieldGenerator::new(input, field, pos_emitter)
         .read_value()
         .wrap_map_stream()
         .try_conversion(name, variant_name)
@@ -177,11 +191,21 @@ struct FieldGenerator<'field> {
     reader_var: TokenStream,
     endian_var: TokenStream,
     args_var: Option<Ident>,
+    pos_emitter: Cow<'field, PosEmitter>,
 }
 
 impl<'field> FieldGenerator<'field> {
-    fn new(input: &Input, field: &'field StructField) -> Self {
+    fn new(
+        input: &Input,
+        field: &'field StructField,
+        pos_emitter: Option<&'field PosEmitter>,
+    ) -> Self {
         let (reader_var, endian_var, args_var) = make_field_vars(input, field);
+
+        let pos_emitter = pos_emitter.map_or_else(
+            || Cow::Owned(PosEmitter::new(&input.stream_ident_or(READER))),
+            Cow::Borrowed,
+        );
 
         Self {
             field,
@@ -190,6 +214,7 @@ impl<'field> FieldGenerator<'field> {
             reader_var,
             endian_var,
             args_var,
+            pos_emitter,
         }
     }
 
@@ -259,7 +284,7 @@ impl<'field> FieldGenerator<'field> {
     }
 
     fn append_assertions(mut self) -> Self {
-        let assertions = get_assertions(&self.field.assertions);
+        let assertions = get_assertions(&self.pos_emitter, &self.field.assertions);
         let head = self.out;
         self.out = quote! {
             #head
@@ -279,7 +304,16 @@ impl<'field> FieldGenerator<'field> {
     }
 
     fn finish(self) -> TokenStream {
-        self.out
+        let rest = self.out;
+        if let Cow::Owned(pos_emitter) = self.pos_emitter {
+            let pos = pos_emitter.finish();
+            quote! {
+                #pos
+                #rest
+            }
+        } else {
+            rest
+        }
     }
 
     fn map_value(mut self) -> Self {
@@ -586,13 +620,20 @@ fn get_err_context(
     }
 }
 
-fn get_prelude(input: &Input, name: Option<&Ident>) -> TokenStream {
-    PreludeGenerator::new(input)
+fn get_prelude(
+    input: &Input,
+    name: Option<&Ident>,
+    is_enum_variant: bool,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    let mut prelude = PreludeGenerator::new(input, pos_emitter)
         .add_imports(name)
         .add_endian()
-        .add_magic_pre_assertion()
-        .add_map_stream()
-        .finish()
+        .add_magic_pre_assertion();
+    if is_enum_variant {
+        prelude = prelude.reset_position_after_magic();
+    }
+    prelude.add_map_stream().finish()
 }
 
 fn generate_seek_after(reader_var: &TokenStream, field: &StructField) -> TokenStream {

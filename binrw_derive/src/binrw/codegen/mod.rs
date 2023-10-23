@@ -5,7 +5,8 @@ mod write_options;
 
 use crate::{
     binrw::parser::{
-        Assert, AssertionError, CondEndian, Imports, Input, ParseResult, PassedArgs, StructField,
+        Assert, AssertionError, CondEndian, Imports, Input, Map, ParseResult, PassedArgs,
+        StructField,
     },
     named_args::{arg_type_name, derive_from_imports},
     util::{quote_spanned_any, IdentStr},
@@ -14,8 +15,8 @@ use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 use sanitization::{
     ARGS, ARGS_LIFETIME, ARGS_MACRO, ASSERT, ASSERT_ERROR_FN, BINREAD_TRAIT, BINWRITE_TRAIT,
-    BIN_ERROR, BIN_RESULT, ENDIAN_ENUM, OPT, POS, READER, READ_TRAIT, SEEK_TRAIT, TEMP, WRITER,
-    WRITE_TRAIT,
+    BIN_ERROR, BIN_RESULT, ENDIAN_ENUM, OPT, POS, READER, READ_TRAIT, RESTORE_POSITION, SEEK_TRAIT,
+    TEMP, WRITER, WRITE_TRAIT,
 };
 use syn::{spanned::Spanned, DeriveInput, Ident, Type};
 
@@ -194,11 +195,47 @@ fn generate_trait_impl<const WRITE: bool>(
     }
 }
 
+#[derive(Clone)]
+#[must_use]
+struct PosEmitter {
+    used: core::cell::Cell<bool>,
+    stream_var: TokenStream,
+}
+
+impl PosEmitter {
+    fn new(stream_var: &TokenStream) -> Self {
+        Self {
+            used: core::cell::Cell::new(false),
+            stream_var: stream_var.clone(),
+        }
+    }
+
+    fn finish(self) -> TokenStream {
+        self.used
+            .get()
+            .then(|| {
+                let var = self.stream_var;
+                quote! {
+                    let #POS = #SEEK_TRAIT::stream_position(#var)?;
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    fn pos(&self) -> &'static IdentStr {
+        self.used.set(true);
+        &POS
+    }
+}
+
 fn get_args_lifetime(span: proc_macro2::Span) -> syn::Lifetime {
     syn::Lifetime::new(&format!("'{ARGS_LIFETIME}"), span)
 }
 
-fn get_assertions(assertions: &[Assert]) -> impl Iterator<Item = TokenStream> + '_ {
+fn get_assertions<'a>(
+    pos_emitter: &'a PosEmitter,
+    assertions: &'a [Assert],
+) -> impl Iterator<Item = TokenStream> + 'a {
     assertions.iter().map(
         |Assert {
              kw_span,
@@ -215,8 +252,10 @@ fn get_assertions(assertions: &[Assert]) -> impl Iterator<Item = TokenStream> + 
                 }
             };
 
+            let pos = pos_emitter.pos();
+
             quote_spanned_any! {*kw_span=>
-                #ASSERT(#condition, #POS, #error_fn)?;
+                #ASSERT(#condition, #pos, #error_fn)?;
             }
         },
     )
@@ -301,6 +340,32 @@ fn get_passed_args(field: &StructField, stream: IdentStr) -> Option<TokenStream>
             })
         }
     }
+}
+
+fn get_rewind(
+    input: &Input,
+    var: &TokenStream,
+    pos_emitter: PosEmitter,
+) -> (TokenStream, TokenStream) {
+    let needs_rewind = match input.map() {
+        Map::None => match input {
+            Input::UnitStruct(_) | Input::Enum(_) => input.magic().is_some(),
+            Input::Struct(_) => true,
+            Input::UnitOnlyEnum(e) => e.map.as_repr().is_some(),
+        },
+        Map::Try(_) | Map::Map(_) | Map::Repr(_) => true,
+    };
+
+    let rewind = needs_rewind
+        .then(|| {
+            let pos = pos_emitter.pos();
+            quote! {
+                .or_else(#RESTORE_POSITION::<binrw::Error, _, _>(#var, #pos))
+            }
+        })
+        .unwrap_or_default();
+
+    (pos_emitter.finish(), rewind)
 }
 
 fn get_try_calc(pos: IdentStr, ty: &Type, calc: &TokenStream) -> TokenStream {

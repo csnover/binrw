@@ -2,14 +2,13 @@ mod r#enum;
 mod map;
 mod r#struct;
 
-use super::{get_assertions, get_destructured_imports};
+use super::{get_assertions, get_destructured_imports, PosEmitter};
 use crate::{
     binrw::{
         codegen::{
             get_endian,
             sanitization::{
-                ARGS, ASSERT_MAGIC, MAP_READER_TYPE_HINT, OPT, POS, READER, RESTORE_POSITION,
-                SEEK_TRAIT,
+                ARGS, ASSERT_MAGIC, MAP_READER_TYPE_HINT, OPT, POS, READER, SEEK_TRAIT,
             },
         },
         parser::{Input, Magic, Map},
@@ -23,43 +22,33 @@ use r#struct::{generate_struct, generate_unit_struct};
 use syn::{spanned::Spanned, Ident};
 
 pub(crate) fn generate(input: &Input, derive_input: &syn::DeriveInput) -> TokenStream {
+    let reader_var = input.stream_ident_or(READER);
     let name = Some(&derive_input.ident);
-    let (inner, needs_rewind) = match input.map() {
+    let pos_emitter = PosEmitter::new(&reader_var);
+    let inner = match input.map() {
         Map::None => match input {
-            Input::UnitStruct(_) => (generate_unit_struct(input, name, None), false),
-            Input::Struct(s) => (generate_struct(input, name, s), true),
-            Input::Enum(e) => (generate_data_enum(input, name, e), false),
-            Input::UnitOnlyEnum(e) => (
-                generate_unit_enum(input, name, e),
-                e.map.as_repr().is_some(),
-            ),
+            Input::UnitStruct(_) => generate_unit_struct(input, name, None, &pos_emitter),
+            Input::Struct(s) => generate_struct(input, name, s, &pos_emitter),
+            Input::Enum(e) => generate_data_enum(input, name, e, &pos_emitter),
+            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e, &pos_emitter),
         },
-        Map::Try(map) => (map::generate_try_map(input, name, map), true),
-        Map::Map(map) => (map::generate_map(input, name, map), true),
+        Map::Try(map) => map::generate_try_map(input, name, map, &pos_emitter),
+        Map::Map(map) => map::generate_map(input, name, map, &pos_emitter),
         Map::Repr(ty) => match input {
-            Input::UnitOnlyEnum(e) => (generate_unit_enum(input, name, e), true),
-            _ => (
-                map::generate_try_map(
-                    input,
-                    name,
-                    &quote! { <#ty as core::convert::TryInto<_>>::try_into },
-                ),
-                true,
+            Input::UnitOnlyEnum(e) => generate_unit_enum(input, name, e, &pos_emitter),
+            _ => map::generate_try_map(
+                input,
+                name,
+                &quote! { <#ty as core::convert::TryInto<_>>::try_into },
+                &pos_emitter,
             ),
         },
     };
 
-    let reader_var = input.stream_ident_or(READER);
-
-    let rewind = (needs_rewind || input.magic().is_some()).then(|| {
-        quote! {
-            .or_else(#RESTORE_POSITION::<binrw::Error, _, _>(#reader_var, #POS))
-        }
-    });
-
+    let (set_pos, rewind) = super::get_rewind(input, &reader_var, pos_emitter);
     quote! {
         let #reader_var = #READER;
-        let #POS = #SEEK_TRAIT::stream_position(#reader_var)?;
+        #set_pos
         (|| {
             #inner
         })()#rewind
@@ -70,15 +59,17 @@ struct PreludeGenerator<'input> {
     input: &'input Input,
     reader_var: TokenStream,
     out: TokenStream,
+    pos_emitter: &'input PosEmitter,
 }
 
 impl<'input> PreludeGenerator<'input> {
-    fn new(input: &'input Input) -> Self {
+    fn new(input: &'input Input, pos_emitter: &'input PosEmitter) -> Self {
         let reader_var = input.stream_ident_or(READER);
         Self {
             input,
             reader_var,
             out: TokenStream::new(),
+            pos_emitter,
         }
     }
 
@@ -111,7 +102,7 @@ impl<'input> PreludeGenerator<'input> {
     fn add_magic_pre_assertion(mut self) -> Self {
         let head = self.out;
         let magic = get_magic(self.input.magic(), &self.reader_var, OPT);
-        let pre_assertions = get_assertions(self.input.pre_assertions());
+        let pre_assertions = get_assertions(self.pos_emitter, self.input.pre_assertions());
         self.out = quote! {
             #head
             #magic

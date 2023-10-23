@@ -10,6 +10,7 @@ use crate::{
                 WRITE_MAP_ARGS_TYPE_HINT, WRITE_MAP_INPUT_TYPE_HINT, WRITE_METHOD,
                 WRITE_TRY_MAP_ARGS_TYPE_HINT, WRITE_ZEROES,
             },
+            PosEmitter,
         },
         parser::{FieldMode, Map, StructField},
     },
@@ -21,8 +22,12 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{spanned::Spanned, Ident};
 
-pub(crate) fn write_field(writer_var: &TokenStream, field: &StructField) -> TokenStream {
-    StructFieldGenerator::new(field, writer_var)
+pub(super) fn write_field(
+    writer_var: &TokenStream,
+    field: &StructField,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    StructFieldGenerator::new(field, writer_var, pos_emitter)
         .write_field()
         .wrap_map_stream()
         .prefix_map_value()
@@ -42,24 +47,32 @@ struct StructFieldGenerator<'input> {
     outer_writer_var: &'input TokenStream,
     writer_var: Cow<'input, TokenStream>,
     out: TokenStream,
+    pos_emitter: &'input PosEmitter,
 }
 
 impl<'a> StructFieldGenerator<'a> {
-    fn new(field: &'a StructField, outer_writer_var: &'a TokenStream) -> Self {
+    fn new(
+        field: &'a StructField,
+        outer_writer_var: &'a TokenStream,
+        pos_emitter: &'a PosEmitter,
+    ) -> Self {
+        let writer_var = if field.map_stream.is_some() {
+            Cow::Owned(make_ident(&field.ident, "reader").into_token_stream())
+        } else {
+            Cow::Borrowed(outer_writer_var)
+        };
+
         Self {
             field,
             outer_writer_var,
-            writer_var: if field.map_stream.is_some() {
-                Cow::Owned(make_ident(&field.ident, "reader").into_token_stream())
-            } else {
-                Cow::Borrowed(outer_writer_var)
-            },
+            writer_var,
             out: TokenStream::new(),
+            pos_emitter,
         }
     }
 
     fn prefix_assertions(mut self) -> Self {
-        let assertions = get_assertions(&self.field.assertions);
+        let assertions = get_assertions(self.pos_emitter, &self.field.assertions);
 
         let out = self.out;
         self.out = quote! {

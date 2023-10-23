@@ -2,7 +2,7 @@ use crate::{
     binrw::{
         codegen::{
             get_assertions, get_destructured_imports, get_endian,
-            sanitization::{ARGS, MAP_WRITER_TYPE_HINT, OPT, WRITER, WRITE_METHOD},
+            sanitization::{ARGS, MAP_WRITER_TYPE_HINT, OPT, WRITER, WRITE_METHOD}, PosEmitter,
         },
         parser::{CondEndian, Input, Magic},
     },
@@ -12,30 +12,33 @@ use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::spanned::Spanned;
 
-pub(crate) struct PreludeGenerator<'a> {
+pub(super) struct PreludeGenerator<'a> {
     out: TokenStream,
     input: &'a Input,
     name: Option<&'a Ident>,
     writer_var: &'a TokenStream,
+    pos_emitter: &'a PosEmitter,
 }
 
 impl<'a> PreludeGenerator<'a> {
-    pub(crate) fn new(
+    pub(super) fn new(
         out: TokenStream,
         input: &'a Input,
         name: Option<&'a Ident>,
         writer_var: &'a TokenStream,
+        pos_emitter: &'a PosEmitter,
     ) -> Self {
         Self {
             out,
             input,
             name,
             writer_var,
+            pos_emitter,
         }
     }
 
     pub(super) fn prefix_assertions(mut self) -> Self {
-        let assertions = get_assertions(self.input.assertions());
+        let assertions = get_assertions(self.pos_emitter, self.input.assertions());
         let out = self.out;
         self.out = quote! {
             #(#assertions)*

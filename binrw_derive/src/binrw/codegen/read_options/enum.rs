@@ -3,9 +3,12 @@ use super::{
     PreludeGenerator,
 };
 use crate::binrw::{
-    codegen::sanitization::{
-        BACKTRACE_FRAME, BIN_ERROR, ERROR_BASKET, OPT, POS, READER, READ_METHOD,
-        RESTORE_POSITION_VARIANT, TEMP, WITH_CONTEXT,
+    codegen::{
+        sanitization::{
+            BACKTRACE_FRAME, BIN_ERROR, ERROR_BASKET, OPT, READER, READ_METHOD,
+            RESTORE_POSITION_VARIANT, TEMP, WITH_CONTEXT,
+        },
+        PosEmitter,
     },
     parser::{Enum, EnumErrorMode, EnumVariant, Input, UnitEnumField, UnitOnlyEnum},
 };
@@ -17,16 +20,22 @@ pub(super) fn generate_unit_enum(
     input: &Input,
     name: Option<&Ident>,
     en: &UnitOnlyEnum,
+    pos_emitter: &PosEmitter,
 ) -> TokenStream {
-    let prelude = PreludeGenerator::new(input)
+    let prelude = PreludeGenerator::new(input, pos_emitter)
         .add_imports(name)
         .add_endian()
         .add_magic_pre_assertion()
         .finish();
 
     let read = match en.map.as_repr() {
-        Some(repr) => generate_unit_enum_repr(&input.stream_ident_or(READER), repr, &en.fields),
-        None => generate_unit_enum_magic(&input.stream_ident_or(READER), &en.fields),
+        Some(repr) => generate_unit_enum_repr(
+            &input.stream_ident_or(READER),
+            repr,
+            &en.fields,
+            pos_emitter,
+        ),
+        None => generate_unit_enum_magic(&input.stream_ident_or(READER), &en.fields, pos_emitter),
     };
 
     quote! {
@@ -39,6 +48,7 @@ fn generate_unit_enum_repr(
     reader_var: &TokenStream,
     repr: &TokenStream,
     variants: &[UnitEnumField],
+    pos_emitter: &PosEmitter,
 ) -> TokenStream {
     let clauses = variants.iter().map(|variant| {
         let ident = &variant.ident;
@@ -54,12 +64,14 @@ fn generate_unit_enum_repr(
         }
     });
 
+    let pos = pos_emitter.pos();
+
     quote! {
         let #TEMP: #repr = #READ_METHOD(#reader_var, #OPT, ())?;
         #(#clauses else)* {
             Err(#WITH_CONTEXT(
                 #BIN_ERROR::NoVariantMatch {
-                    pos: #POS,
+                    pos: #pos,
                 },
                 #BACKTRACE_FRAME::Message({
                     extern crate alloc;
@@ -70,7 +82,11 @@ fn generate_unit_enum_repr(
     }
 }
 
-fn generate_unit_enum_magic(reader_var: &TokenStream, variants: &[UnitEnumField]) -> TokenStream {
+fn generate_unit_enum_magic(
+    reader_var: &TokenStream,
+    variants: &[UnitEnumField],
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
     // group fields by the type (Kind) of their magic value, preserve the order
     let group_by_magic_type = variants.iter().fold(
         Vec::new(),
@@ -93,6 +109,8 @@ fn generate_unit_enum_magic(reader_var: &TokenStream, variants: &[UnitEnumField]
             group_by_magic_type
         },
     );
+
+    let pos = pos_emitter.pos();
 
     // for each type (Kind), read and try to match the magic of each field
     let try_each_magic_type = group_by_magic_type.into_iter().map(|(_kind, fields)| {
@@ -120,7 +138,7 @@ fn generate_unit_enum_magic(reader_var: &TokenStream, variants: &[UnitEnumField]
         let body = quote! {
             match #amp #READ_METHOD(#reader_var, #OPT, ())? {
                 #(#matches,)*
-                _ => Err(#BIN_ERROR::NoVariantMatch { pos: #POS })
+                _ => Err(#BIN_ERROR::NoVariantMatch { pos: #pos })
             }
         };
 
@@ -129,14 +147,14 @@ fn generate_unit_enum_magic(reader_var: &TokenStream, variants: &[UnitEnumField]
                 #body
             })() {
                 v @ Ok(_) => return v,
-                Err(#TEMP) => { #RESTORE_POSITION_VARIANT(#reader_var, #POS, #TEMP)?; }
+                Err(#TEMP) => { #RESTORE_POSITION_VARIANT(#reader_var, #pos, #TEMP)?; }
             }
         }
     });
 
     let return_error = quote! {
         Err(#BIN_ERROR::NoVariantMatch {
-            pos: #POS
+            pos: #pos
         })
     };
 
@@ -146,8 +164,22 @@ fn generate_unit_enum_magic(reader_var: &TokenStream, variants: &[UnitEnumField]
     }
 }
 
-pub(super) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum) -> TokenStream {
+pub(super) fn generate_data_enum(
+    input: &Input,
+    name: Option<&Ident>,
+    en: &Enum,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
     let return_all_errors = en.error_mode != EnumErrorMode::ReturnUnexpectedError;
+
+    let prelude = PreludeGenerator::new(input, pos_emitter)
+        .add_imports(name)
+        .add_endian()
+        .add_magic_pre_assertion()
+        .reset_position_after_magic()
+        .finish();
+
+    let pos = pos_emitter.pos();
 
     let (create_error_basket, return_error) = if return_all_errors {
         (
@@ -157,7 +189,7 @@ pub(super) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum)
             },
             quote! {
                 Err(#BIN_ERROR::EnumErrors {
-                    pos: #POS,
+                    pos: #pos,
                     variant_errors: #ERROR_BASKET
                 })
             },
@@ -167,23 +199,16 @@ pub(super) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum)
             TokenStream::new(),
             quote! {
                 Err(#BIN_ERROR::NoVariantMatch {
-                    pos: #POS
+                    pos: #pos,
                 })
             },
         )
     };
 
-    let prelude = PreludeGenerator::new(input)
-        .add_imports(name)
-        .add_endian()
-        .add_magic_pre_assertion()
-        .reset_position_after_magic()
-        .finish();
-
     let reader_var = input.stream_ident_or(READER);
 
     let try_each_variant = en.variants.iter().map(|variant| {
-        let body = generate_variant_impl(en, variant);
+        let body = generate_variant_impl(en, variant, pos_emitter);
 
         let handle_error = if return_all_errors {
             let name = variant.ident().to_string();
@@ -200,7 +225,7 @@ pub(super) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum)
             })() {
                 ok @ Ok(_) => return ok,
                 Err(error) => {
-                    #RESTORE_POSITION_VARIANT(#reader_var, #POS, error).map(|#TEMP| {
+                    #RESTORE_POSITION_VARIANT(#reader_var, #pos, error).map(|#TEMP| {
                         #handle_error
                     })?;
                 }
@@ -216,19 +241,27 @@ pub(super) fn generate_data_enum(input: &Input, name: Option<&Ident>, en: &Enum)
     }
 }
 
-fn generate_variant_impl(en: &Enum, variant: &EnumVariant) -> TokenStream {
+fn generate_variant_impl(
+    en: &Enum,
+    variant: &EnumVariant,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
     let input = Input::Struct(variant.clone().into());
 
     match variant {
-        EnumVariant::Variant { ident, options } => StructGenerator::new(&input, options)
-            .read_fields(
-                None,
-                Some(&format!("{}::{}", en.ident.as_ref().unwrap(), &ident)),
-            )
-            .initialize_value_with_assertions(Some(ident), &en.assertions)
-            .return_value()
-            .finish(),
+        EnumVariant::Variant { ident, options } => {
+            StructGenerator::new(&input, options, pos_emitter)
+                .read_fields(
+                    None,
+                    Some(&format!("{}::{}", en.ident.as_ref().unwrap(), &ident)),
+                )
+                .initialize_value_with_assertions(Some(ident), &en.assertions)
+                .return_value()
+                .finish()
+        }
 
-        EnumVariant::Unit(options) => generate_unit_struct(&input, None, Some(&options.ident)),
+        EnumVariant::Unit(options) => {
+            generate_unit_struct(&input, None, Some(&options.ident), pos_emitter)
+        }
     }
 }

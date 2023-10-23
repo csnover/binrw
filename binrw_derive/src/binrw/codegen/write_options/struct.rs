@@ -1,14 +1,22 @@
 use super::{prelude::PreludeGenerator, struct_field::write_field};
 use crate::binrw::{
-    codegen::sanitization::{THIS, WRITER},
+    codegen::{
+        sanitization::{THIS, WRITER},
+        PosEmitter,
+    },
     parser::{Input, Struct},
 };
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Ident;
 
-pub(super) fn generate_struct(input: &Input, name: Option<&Ident>, st: &Struct) -> TokenStream {
-    StructGenerator::new(input, st, name, &input.stream_ident_or(WRITER))
+pub(super) fn generate_struct(
+    input: &Input,
+    name: Option<&Ident>,
+    st: &Struct,
+    pos_emitter: &PosEmitter,
+) -> TokenStream {
+    StructGenerator::new(input, st, name, &input.stream_ident_or(WRITER), pos_emitter)
         .write_fields()
         .prefix_prelude()
         .prefix_borrow_fields()
@@ -21,6 +29,7 @@ pub(super) struct StructGenerator<'input> {
     name: Option<&'input Ident>,
     writer_var: &'input TokenStream,
     out: TokenStream,
+    pos_emitter: &'input PosEmitter,
 }
 
 impl<'input> StructGenerator<'input> {
@@ -29,6 +38,7 @@ impl<'input> StructGenerator<'input> {
         st: &'input Struct,
         name: Option<&'input Ident>,
         writer_var: &'input TokenStream,
+        pos_emitter: &'input PosEmitter,
     ) -> Self {
         Self {
             input,
@@ -36,11 +46,12 @@ impl<'input> StructGenerator<'input> {
             name,
             writer_var,
             out: TokenStream::new(),
+            pos_emitter,
         }
     }
 
     pub(super) fn prefix_prelude(mut self) -> Self {
-        self.out = PreludeGenerator::new(self.out, self.input, self.name, self.writer_var)
+        self.out = PreludeGenerator::new(self.out, self.input, self.name, self.writer_var, self.pos_emitter)
             .prefix_map_stream()
             .prefix_magic(&self.st.magic)
             .prefix_endian(&self.st.endian)
@@ -56,7 +67,7 @@ impl<'input> StructGenerator<'input> {
             .st
             .fields
             .iter()
-            .map(|field| write_field(self.writer_var, field));
+            .map(|field| write_field(self.writer_var, field, self.pos_emitter));
 
         self.out = quote! {
             #(#write_fields)*

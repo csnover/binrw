@@ -241,7 +241,7 @@ fn no_seek_data_enum() {
                 (BacktraceFrame::Message(m), BacktraceFrame::Custom(e)) => {
                     assert_eq!(m, "rewinding after a failure");
                     match e.downcast_ref::<binrw::Error>() {
-                        Some(binrw::Error::AssertFail { pos, .. }) => assert_eq!(*pos, 0),
+                        Some(binrw::Error::AssertFail { pos, .. }) => assert_eq!(*pos, 1),
                         e => panic!("unexpected error {:?}", e),
                     }
                 }
