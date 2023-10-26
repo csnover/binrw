@@ -30,6 +30,72 @@ pub use impls::VecArgs;
 /// [temporary fields].
 ///
 /// [temporary fields]: crate::docs::attribute#temp
+///
+/// # Examples
+///
+/// A hybrid between a length-prefixed (Pascal) string and a null-terminated (C)
+/// string:
+///
+/// ```
+/// use binrw::{BinRead, BinResult, Endian, args, meta::{EndianKind, ReadEndian}, io::{Read, Seek}};
+/// # use binrw::io::Cursor;
+///
+/// # #[derive(Debug, PartialEq)]
+/// struct HybridString(Vec<u8>);
+///
+/// impl BinRead for HybridString {
+///     type Args<'a> = ();
+///
+///     fn read_options<R: Read + Seek>(
+///         reader: &mut R,
+///         endian: Endian,
+///         (): Self::Args<'_>,
+///     ) -> BinResult<Self> {
+///         let size = u8::read(reader)?;
+///         let mut data = Vec::<u8>::read_options(reader, endian, args! {
+///             count: size.into(),
+///         })?;
+///
+///         if size == u8::MAX {
+///             for byte in reader.bytes() {
+///                 match byte {
+///                     Ok(0) => break,
+///                     Ok(byte) => data.push(byte),
+///                     Err(error) => return Err(error.into()),
+///                 }
+///             }
+///         }
+///
+///         Ok(Self(data))
+///     }
+/// }
+///
+/// // When implemented, the `ReadEndian` trait enables the use of convenience
+/// // functions `BinRead::read` and `BinRead::read_args`. The implementation of
+/// // `ReadEndian` describes how the code *you have written* in
+/// // `BinRead::read_options` handles endianness. If you are not explicitly
+/// // overriding endianness in your `read_options` implementation, *do not*
+/// // implement this trait.
+/// impl ReadEndian for HybridString {
+///     // In this example, strings are just a sequence of bytes, so they have
+///     // no endianness and it is safe to implement this trait and specify
+///     // `None` endianness.
+///     const ENDIAN: EndianKind = EndianKind::None;
+/// }
+///
+/// # assert_eq!(
+/// #     HybridString::read(&mut Cursor::new(b"\x05helloxxx")).unwrap().0,
+/// #     b"hello"
+/// # );
+/// # let big_scream = [b'a'; 0x100];
+/// # let big_data = {
+/// #     let mut d = [b'a'; 260]; d[0] = 0xff; d[0x101] = b'\0'; d
+/// # };
+/// # assert_eq!(
+/// #     HybridString::read(&mut Cursor::new(big_data)).unwrap().0,
+/// #     big_scream
+/// # );
+/// ```
 pub trait BinRead: Sized {
     /// The type used for the `args` parameter of [`read_args()`] and
     /// [`read_options()`].
