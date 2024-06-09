@@ -29,14 +29,12 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
-          components: clippy, rustfmt
+          components: rustfmt
       - name: Check formatting
         # There is no reason to check formatting more than once since it is
         # a syntax check that does not change depending upon compiler features
         if: matrix.features.check_formatting
         run: cargo fmt -- --check
-      - name: Run clippy
-        run: cargo clippy --all-targets ${{ matrix.features.value }} -- -D warnings
       - name: Build documentation
         run: cargo rustdoc ${{ matrix.features.value }} -- -D warnings
 
@@ -61,6 +59,9 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
+          components: clippy
+      - name: Run clippy
+        run: cargo clippy --all-targets ${{ matrix.features.value }} -- -D warnings
       - name: Build workspace
         run: cargo build ${{ matrix.features.value }}
       # Testing is separated just to more clearly differentiate in the CI
