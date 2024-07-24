@@ -159,7 +159,6 @@ fn generate_field(
         .map_value()
         .wrap_debug()
         .wrap_seek()
-        .wrap_condition()
         .assign_to_var()
         .append_assertions()
         .wrap_restore_position()
@@ -167,6 +166,7 @@ fn generate_field(
         .prefix_args_and_options()
         .prefix_map_function()
         .prefix_read_function()
+        .wrap_condition()
         .finish()
 }
 
@@ -503,12 +503,14 @@ impl<'field> FieldGenerator<'field> {
                 .alternate
                 .as_ref()
                 .map_or_else(|| Cow::Owned(quote! { <_>::default() }), Cow::Borrowed);
+            let ident = &self.field.ident;
             self.out = quote! {
-                if #condition {
+                let mut #ident = if #condition {
                     #consequent
+                    #ident
                 } else {
                     #alternate
-                }
+                };
             };
         }
 

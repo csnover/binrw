@@ -474,6 +474,50 @@ fn if_alternate() {
 }
 
 #[test]
+fn skip_other_field_directives_on_false() {
+    fn explode() -> u8 {
+        if true {
+            panic!("should not happen")
+        } else {
+            0
+        }
+    }
+
+    #[derive(BinRead, Clone, Copy, Debug, Default, PartialEq)]
+    #[br(import(_a: u8))]
+    struct NeedsArg(u8);
+
+    #[derive(BinRead, Debug, PartialEq)]
+    struct Test {
+        #[br(
+            if(false, NeedsArg(2)),
+            align_after(explode()),
+            align_before(explode()),
+            args(explode()),
+            pad_after(explode()),
+            pad_before(explode()),
+            pad_size_to(explode()),
+            parse_with(|_, _, _| Ok(NeedsArg(explode()))),
+            seek_before(SeekFrom::Start(explode().into())),
+            try,
+            assert(a != NeedsArg(explode()))
+        )]
+        a: NeedsArg,
+        #[br(if(false, NeedsArg(3)), calc(NeedsArg(1)))]
+        b: NeedsArg,
+    }
+
+    let result = Test::read_le(&mut Cursor::new(b"\x01")).unwrap();
+    assert_eq!(
+        result,
+        Test {
+            a: NeedsArg(2),
+            b: NeedsArg(3)
+        }
+    );
+}
+
+#[test]
 fn ignore_and_default() {
     #[derive(Debug, Eq, PartialEq)]
     struct One(u8);
