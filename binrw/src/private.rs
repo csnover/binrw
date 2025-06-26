@@ -24,6 +24,7 @@ pub trait Required: MissingArgsDirective {
 }
 
 impl<T: Default> Required for T {
+    #[inline]
     fn args() -> Self {
         <Self as Default>::default()
     }
@@ -41,6 +42,7 @@ pub enum AssertErrorFn<M, E> {
     Error(E),
 }
 
+#[inline]
 pub fn assert<MsgFn, Msg, ErrorFn, Err>(
     test: bool,
     pos: u64,
@@ -55,16 +57,26 @@ where
     if test {
         Ok(())
     } else {
-        Err(match error_fn {
-            AssertErrorFn::Message(error_fn) => Error::AssertFail {
-                pos,
-                message: error_fn().into(),
-            },
-            AssertErrorFn::Error(error_fn) => Error::Custom {
-                pos,
-                err: Box::new(error_fn()),
-            },
-        })
+        Err(assert_err(pos, error_fn))
+    }
+}
+
+fn assert_err<MsgFn, Msg, ErrorFn, Err>(pos: u64, error_fn: AssertErrorFn<MsgFn, ErrorFn>) -> Error
+where
+    MsgFn: Fn() -> Msg,
+    Msg: Into<String> + Sized,
+    ErrorFn: Fn() -> Err,
+    Err: CustomError + 'static,
+{
+    match error_fn {
+        AssertErrorFn::Message(error_fn) => Error::AssertFail {
+            pos,
+            message: error_fn().into(),
+        },
+        AssertErrorFn::Error(error_fn) => Error::Custom {
+            pos,
+            err: Box::new(error_fn()),
+        },
     }
 }
 
@@ -74,6 +86,7 @@ where
 // the return statement of the map function. The simpler approach of assigning
 // the map function to a variable with a function pointer type does not work for
 // capturing closures since they are not compatible with that type.
+#[inline]
 pub fn coerce_fn<R, T, F>(f: F) -> F
 where
     F: FnMut(T) -> R,
@@ -113,6 +126,7 @@ pub fn not_enough_bytes() -> Error {
     ))
 }
 
+#[inline]
 pub fn parse_fn_type_hint<Ret, ParseFn, R, Args>(f: ParseFn) -> ParseFn
 where
     R: Read + Seek,
@@ -121,6 +135,7 @@ where
     f
 }
 
+#[inline]
 pub fn parse_function_args_type_hint<R, Res, Args, F>(_: &F, a: Args) -> Args
 where
     R: Read + Seek,
@@ -129,6 +144,7 @@ where
     a
 }
 
+#[inline]
 pub fn write_function_args_type_hint<'a, T, W, Args, F>(_: &F, a: Args) -> Args
 where
     W: Write + Seek,
@@ -137,6 +153,7 @@ where
     a
 }
 
+#[inline]
 pub fn map_args_type_hint<'a, Input, Output, MapFn, Args>(_: &MapFn, args: Args) -> Args
 where
     MapFn: FnOnce(Input) -> Output,
@@ -145,6 +162,7 @@ where
     args
 }
 
+#[inline]
 pub fn map_reader_type_hint<'a, Reader, MapFn, Output>(x: MapFn) -> MapFn
 where
     Reader: Read + Seek + 'a,
@@ -154,6 +172,7 @@ where
     x
 }
 
+#[inline]
 pub fn map_writer_type_hint<'a, Writer, MapFn, Output>(x: MapFn) -> MapFn
 where
     Writer: Write + Seek + 'a,
@@ -163,6 +182,7 @@ where
     x
 }
 
+#[inline]
 pub fn write_fn_type_hint<'a, T, WriterFn, Writer, Args>(x: WriterFn) -> WriterFn
 where
     Writer: Write + Seek,
@@ -171,6 +191,7 @@ where
     x
 }
 
+#[inline]
 pub fn write_map_args_type_hint<'a, Input, Output, MapFn, Args>(_: &MapFn, args: Args) -> Args
 where
     MapFn: FnOnce(Input) -> Output,
@@ -216,6 +237,7 @@ pub fn restore_position_variant<S: Seek>(
     }
 }
 
+#[inline]
 pub fn write_try_map_args_type_hint<'a, Input, Output, Error, MapFn, Args>(
     _: &MapFn,
     args: Args,
@@ -228,6 +250,7 @@ where
     args
 }
 
+#[inline]
 pub fn write_map_fn_input_type_hint<Input, Output, MapFn>(func: MapFn) -> MapFn
 where
     MapFn: FnOnce(Input) -> Output,
@@ -235,6 +258,7 @@ where
     func
 }
 
+#[inline]
 pub fn write_fn_map_output_type_hint<'a, Input, Output, MapFn, Writer, WriteFn, Args>(
     _: &MapFn,
     func: WriteFn,
@@ -248,6 +272,7 @@ where
     func
 }
 
+#[inline]
 pub fn write_fn_try_map_output_type_hint<'a, Input, Output, Error, MapFn, Writer, WriteFn, Args>(
     _: &MapFn,
     func: WriteFn,
