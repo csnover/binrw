@@ -62,6 +62,11 @@ attr_struct! {
 }
 
 impl StructField {
+    /// Returns true if this field is written from a calculated or mapped value.
+    pub(crate) fn write_owned_value(&self) -> bool {
+        self.generated_value() || !matches!(self.map, Map::None)
+    }
+
     /// Returns true if this field is generated using a calculated value instead
     /// of a parser.
     pub(crate) fn generated_value(&self) -> bool {

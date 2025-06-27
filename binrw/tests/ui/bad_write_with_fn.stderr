@@ -1,0 +1,147 @@
+error[E0425]: cannot find value `missing` in this scope
+  --> tests/ui/bad_write_with_fn.rs:21:23
+   |
+21 |     #[bw(write_with = missing)]
+   |                       ^^^^^^^ not found in this scope
+
+error[E0277]: expected a `FnOnce(&i32, &mut _, binrw::Endian, _)` closure, found `{integer}`
+  --> tests/ui/bad_write_with_fn.rs:15:23
+   |
+15 |     #[bw(write_with = 56)]
+   |                       ^^ expected an `FnOnce(&i32, &mut _, binrw::Endian, _)` closure, found `{integer}`
+   |
+   = help: the trait `for<'a> FnOnce(&i32, &'a mut _, binrw::Endian, _)` is not implemented for `{integer}`
+note: required by a bound in `write_fn_type_hint`
+  --> src/private.rs
+   |
+   | pub fn write_fn_type_hint<'a, T, WriterFn, Writer, Args>(x: WriterFn) -> WriterFn
+   |        ------------------ required by a bound in this function
+...
+   |     WriterFn: FnOnce(&'a T, &mut Writer, Endian, Args) -> BinResult<()>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `write_fn_type_hint`
+
+error[E0618]: expected function, found `{integer}`
+  --> tests/ui/bad_write_with_fn.rs:15:23
+   |
+15 |     #[bw(write_with = 56)]
+   |                       ^^ call expression requires function
+
+error[E0631]: type mismatch in closure arguments
+  --> tests/ui/bad_write_with_fn.rs:17:23
+   |
+17 |       #[bw(write_with = |_: &u8, _, _, _| { Ok(()) })]
+   |                         ^----------------
+   |                         |
+   |  _______________________found signature defined here
+   | |
+18 | |     b: i32,
+   | |__________^ expected due to this
+   |
+   = note: expected closure signature `for<'a> fn(&i32, &'a mut _, binrw::Endian, _) -> _`
+              found closure signature `fn(&u8, _, _, _) -> _`
+note: required by a bound in `write_fn_type_hint`
+  --> src/private.rs
+   |
+   | pub fn write_fn_type_hint<'a, T, WriterFn, Writer, Args>(x: WriterFn) -> WriterFn
+   |        ------------------ required by a bound in this function
+...
+   |     WriterFn: FnOnce(&'a T, &mut Writer, Endian, Args) -> BinResult<()>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `write_fn_type_hint`
+help: consider adjusting the signature so it borrows its argument
+   |
+17 |     #[bw(write_with = |_: &u8, &mut _, _, _| { Ok(()) })]
+   |                                ++++
+
+error[E0308]: mismatched types
+  --> tests/ui/bad_write_with_fn.rs:18:5
+   |
+17 |     #[bw(write_with = |_: &u8, _, _, _| { Ok(()) })]
+   |                       ---------------------------- arguments to this function are incorrect
+18 |     b: i32,
+   |     ^ expected `&u8`, found `&i32`
+   |
+   = note: expected reference `&u8`
+              found reference `&i32`
+note: closure parameter defined here
+  --> tests/ui/bad_write_with_fn.rs:17:24
+   |
+17 |     #[bw(write_with = |_: &u8, _, _, _| { Ok(()) })]
+   |                        ^^^^^^
+
+error[E0631]: type mismatch in function arguments
+  --> tests/ui/bad_write_with_fn.rs:19:23
+   |
+4  | fn wrong(_: &u8) -> BinResult<()> {
+   | --------------------------------- found signature defined here
+...
+19 |     #[bw(write_with = wrong)]
+   |                       ^^^^^ expected due to this
+   |
+   = note: expected function signature `for<'a> fn(&i32, &'a mut _, binrw::Endian, _) -> _`
+              found function signature `fn(&u8, &mut _, binrw::Endian, ()) -> _`
+note: required by a bound in `write_fn_type_hint`
+  --> src/private.rs
+   |
+   | pub fn write_fn_type_hint<'a, T, WriterFn, Writer, Args>(x: WriterFn) -> WriterFn
+   |        ------------------ required by a bound in this function
+...
+   |     WriterFn: FnOnce(&'a T, &mut Writer, Endian, Args) -> BinResult<()>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `write_fn_type_hint`
+
+error[E0308]: mismatched types
+  --> tests/ui/bad_write_with_fn.rs:20:5
+   |
+19 |     #[bw(write_with = wrong)]
+   |                       ----- arguments to this function are incorrect
+20 |     c: i32,
+   |     ^ expected `&u8`, found `&i32`
+   |
+   = note: expected reference `&u8`
+              found reference `&i32`
+note: function defined here
+  --> tests/ui/bad_write_with_fn.rs:4:4
+   |
+4  | fn wrong(_: &u8) -> BinResult<()> {
+   |    ^^^^^ ------
+
+error[E0631]: type mismatch in function arguments
+  --> tests/ui/bad_write_with_fn.rs:23:23
+   |
+9  | fn wrong_args(_: &i32, _: ()) -> BinResult<()> {
+   | ---------------------------------------------- found signature defined here
+...
+23 |     #[bw(write_with = wrong_args, args(0))]
+   |                       ^^^^^^^^^^ expected due to this
+   |
+   = note: expected function signature `for<'a> fn(&u8, &'a mut _, binrw::Endian, _) -> _`
+              found function signature `fn(&i32, &mut _, binrw::Endian, ((),)) -> _`
+note: required by a bound in `write_fn_type_hint`
+  --> src/private.rs
+   |
+   | pub fn write_fn_type_hint<'a, T, WriterFn, Writer, Args>(x: WriterFn) -> WriterFn
+   |        ------------------ required by a bound in this function
+...
+   |     WriterFn: FnOnce(&'a T, &mut Writer, Endian, Args) -> BinResult<()>,
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `write_fn_type_hint`
+
+error[E0308]: mismatched types
+  --> tests/ui/bad_write_with_fn.rs:23:40
+   |
+23 |     #[bw(write_with = wrong_args, args(0))]
+   |                                        ^ expected `()`, found integer
+
+error[E0308]: mismatched types
+  --> tests/ui/bad_write_with_fn.rs:24:5
+   |
+23 |     #[bw(write_with = wrong_args, args(0))]
+   |                       ---------- arguments to this function are incorrect
+24 |     e: u8,
+   |     ^ expected `&i32`, found `&u8`
+   |
+   = note: expected reference `&i32`
+              found reference `&u8`
+note: function defined here
+  --> tests/ui/bad_write_with_fn.rs:9:4
+   |
+9  | fn wrong_args(_: &i32, _: ()) -> BinResult<()> {
+   |    ^^^^^^^^^^ -------

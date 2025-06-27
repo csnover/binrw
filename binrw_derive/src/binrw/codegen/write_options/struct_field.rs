@@ -106,11 +106,15 @@ impl<'a> StructFieldGenerator<'a> {
             }
         } else {
             let ty = &self.field.ty;
-            quote! { #WRITE_FN_TYPE_HINT::<#ty, _, _, _>(#write_fn) }
+            // Using the type span for this section of the function call gets
+            // the compiler to emit the type mismatch pointing to the type
+            // instead of blaming the function exclusively
+            let func = quote_spanned_any!(ty.span()=> #WRITE_FN_TYPE_HINT);
+            quote_spanned_any!(write_fn.span()=> #func::<#ty, _, _, _>(#write_fn))
         };
 
         let out = self.out;
-        self.out = quote! {
+        self.out = quote_spanned_any! {write_fn.span()=>
             let #WRITE_FUNCTION = #write_fn;
             #out
         };
@@ -212,10 +216,21 @@ impl<'a> StructFieldGenerator<'a> {
                     }
                 })
             })
-            .unwrap_or_else(|| quote_spanned! { name.span()=> &#name });
+            .unwrap_or_else(|| {
+                let value_ref = self.field.write_owned_value().then(|| quote!(&));
+                quote!(#value_ref #name)
+            });
 
-        self.out = quote! {
-            #WRITE_FUNCTION(
+        let fn_span = if let FieldMode::Function(write_fn) = &self.field.field_mode {
+            write_fn.span()
+        } else {
+            name.span()
+        };
+
+        // Adding a closure suppresses mentions of the generated
+        // WRITE_FUNCTION variable in errors
+        self.out = quote_spanned_any! {fn_span=>
+            (|| #WRITE_FUNCTION)()(
                 #name,
                 #writer_var,
                 #endian,
@@ -290,10 +305,15 @@ impl<'a> StructFieldGenerator<'a> {
                     }
                 }
             },
-            FieldMode::Function(_) => quote! {
-                let #args = #WRITE_ARGS_TYPE_HINT(&#WRITE_FUNCTION, #args_val);
-                #out
-            },
+            FieldMode::Function(write_fn) =>
+            // Adding a closure suppresses mentions that the type of
+            // args_val influences the call to WRITE_ARGS_TYPE_HINT
+            {
+                quote_spanned_any! {write_fn.span()=>
+                        let #args = (|| #WRITE_ARGS_TYPE_HINT)()(&#WRITE_FUNCTION, #args_val);
+                        #out
+                }
+            }
             FieldMode::Default => unreachable!("Ignored fields are not written"),
         };
 
