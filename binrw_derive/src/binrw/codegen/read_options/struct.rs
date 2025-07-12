@@ -31,7 +31,7 @@ pub(super) fn generate_unit_struct(
     let return_type = get_return_type(variant_ident);
     quote! {
         #prelude
-        Ok(#return_type)
+        ::core::result::Result::Ok(#return_type)
     }
 }
 
@@ -134,7 +134,7 @@ impl<'input> StructGenerator<'input> {
 
         self.out = quote! {
             #head
-            Ok(#THIS)
+            ::core::result::Result::Ok(#THIS)
         };
 
         self
@@ -557,17 +557,17 @@ fn get_err_context(
         let code = {
             let code = BacktraceFrame::from_field(field).to_string();
             if code.is_empty() {
-                quote! { None }
+                quote! { ::core::option::Option::None }
             } else {
-                quote! { Some(#code) }
+                quote! { ::core::option::Option::Some(#code) }
             }
         };
         #[cfg(not(feature = "verbose-backtrace"))]
-        let code = quote!(None);
+        let code = quote!(::core::option::Option::None);
 
         let message = if let Some(ErrContext::Format(fmt, exprs)) = &field.err_context {
             if exprs.is_empty() {
-                quote! { (#fmt) }
+                quote! { #fmt }
             } else {
                 quote! {
                     {
@@ -587,7 +587,7 @@ fn get_err_context(
 
         quote_spanned! {field.ident.span()=>
             #BACKTRACE_FRAME::Full {
-                message: #message.into(),
+                message: ::core::convert::Into::into(#message),
                 line: ::core::line!(),
                 file: ::core::file!(),
                 code: #code,
