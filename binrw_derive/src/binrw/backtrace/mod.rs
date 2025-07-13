@@ -200,6 +200,10 @@ impl LineColumn {
 }
 
 #[cfg(all(feature = "verbose-backtrace", nightly, proc_macro))]
+#[cfg_attr(
+    all(feature = "verbose-backtrace", nightly, proc_macro),
+    allow(clippy::incompatible_msrv)
+)]
 fn start(span: Span) -> LineColumn {
     let span = span.unwrap().start();
     LineColumn {
@@ -208,6 +212,10 @@ fn start(span: Span) -> LineColumn {
     }
 }
 #[cfg(all(feature = "verbose-backtrace", nightly, proc_macro))]
+#[cfg_attr(
+    all(feature = "verbose-backtrace", nightly, proc_macro),
+    allow(clippy::incompatible_msrv)
+)]
 fn end(span: Span) -> LineColumn {
     let span = span.unwrap().end();
     LineColumn {

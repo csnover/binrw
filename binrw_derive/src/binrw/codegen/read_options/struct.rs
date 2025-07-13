@@ -200,6 +200,10 @@ impl<'field> FieldGenerator<'field> {
         // to unwrap just to make it clearer what needs to be undone later.
         // <https://github.com/dtolnay/proc-macro2/pull/383>
         #[cfg(all(feature = "verbose-backtrace", nightly, proc_macro))]
+        #[cfg_attr(
+            all(feature = "verbose-backtrace", nightly, proc_macro),
+            allow(clippy::incompatible_msrv)
+        )]
         fn start_line(span: proc_macro2::Span) -> usize {
             span.unwrap().start().line()
         }
