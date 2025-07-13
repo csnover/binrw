@@ -17,7 +17,7 @@ use crate::{
 };
 use alloc::borrow::Cow;
 use core::ops::Not;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{spanned::Spanned, Ident};
 
@@ -305,12 +305,12 @@ impl<'a> StructFieldGenerator<'a> {
                     }
                 }
             },
-            FieldMode::Function(write_fn) =>
-            // Adding a closure suppresses mentions that the type of
-            // args_val influences the call to WRITE_ARGS_TYPE_HINT
-            {
-                quote_spanned_any! {write_fn.span()=>
-                        let #args = (|| #WRITE_ARGS_TYPE_HINT)()(&#WRITE_FUNCTION, #args_val);
+            FieldMode::Function(write_fn) => {
+                // Adding a closure suppresses mentions that the type of
+                // args_val influences the call to WRITE_ARGS_TYPE_HINT
+                let hint_fn = quote_spanned_any!(write_fn.span()=> (|| #WRITE_ARGS_TYPE_HINT)());
+                quote_spanned_any! {span_at(write_fn.span())=>
+                        let #args = #hint_fn(&#WRITE_FUNCTION, #args_val);
                         #out
                 }
             }
@@ -445,4 +445,9 @@ fn pad_before(writer_var: &TokenStream, field: &StructField) -> TokenStream {
         #align_before
         #pad_size_to_before
     }
+}
+
+// https://github.com/rust-lang/rust-clippy/issues/13264#issuecomment-2407187293
+fn span_at(other: Span) -> Span {
+    Span::call_site().located_at(other)
 }
