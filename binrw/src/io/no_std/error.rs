@@ -91,6 +91,14 @@ impl Error {
             Repr::Simple(kind) => kind,
         }
     }
+
+    /// Creates a new I/O error from an arbitrary error payload.
+    #[must_use]
+    pub fn other<A>(_: A) -> Self {
+        Self {
+            repr: Repr::Simple(ErrorKind::Other),
+        }
+    }
 }
 
 impl From<ErrorKind> for Error {

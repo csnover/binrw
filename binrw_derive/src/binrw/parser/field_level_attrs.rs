@@ -1,8 +1,7 @@
 use super::{
-    attr_struct,
+    FromAttrs, FromField, FromInput, ParseResult, SpannedValue, Struct, TrySet, attr_struct,
     top_level_attrs::StructAttr,
     types::{Assert, CondEndian, Condition, ErrContext, FieldMode, Magic, Map, PassedArgs},
-    FromAttrs, FromField, FromInput, ParseResult, SpannedValue, Struct, TrySet,
 };
 use crate::{binrw::Options, combine_error};
 use proc_macro2::TokenStream;
@@ -194,10 +193,15 @@ impl StructField {
                 (self.offset.is_some(), "offset"),
             ] {
                 if used {
-                    combine_error(&mut all_errors, syn::Error::new(
-                        span,
-                        format!("`{name}` can only be used with named args; did you mean `args {{ inner: {repr} }}`?")
-                    ));
+                    combine_error(
+                        &mut all_errors,
+                        syn::Error::new(
+                            span,
+                            format!(
+                                "`{name}` can only be used with named args; did you mean `args {{ inner: {repr} }}`?"
+                            ),
+                        ),
+                    );
                 }
             }
         }
@@ -241,8 +245,6 @@ impl FromField for StructField {
             align_after: <_>::default(),
             seek_before: <_>::default(),
             pad_size_to: <_>::default(),
-            #[cfg(feature = "verbose-backtrace")]
-            keyword_spans: <_>::default(),
             err_context: <_>::default(),
             debug: <_>::default(),
         };
@@ -302,8 +304,6 @@ impl FromField for UnitEnumField {
             ident: field.ident.clone(),
             magic: <_>::default(),
             pre_assertions: <_>::default(),
-            #[cfg(feature = "verbose-backtrace")]
-            keyword_spans: <_>::default(),
         };
 
         if options.write {

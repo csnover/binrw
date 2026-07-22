@@ -1,7 +1,7 @@
 #[cfg(feature = "std")]
 #[test]
 fn dbg() {
-    use binrw::{io::Cursor, BinRead};
+    use binrw::{BinRead, io::Cursor};
 
     #[allow(dead_code)]
     #[derive(BinRead, Debug)]
@@ -57,10 +57,10 @@ fn dbg() {
                     "[{file}:{offset_3} | offset 0x14] terminator = 0x69\n",
                 ),
                 file = core::file!(),
-                offset_0 = if cfg!(nightly) { 16 } else { 11 },
-                offset_1 = if cfg!(nightly) { 18 } else { 11 },
-                offset_2 = if cfg!(nightly) { 20 } else { 11 },
-                offset_3 = if cfg!(nightly) { 22 } else { 11 },
+                offset_0 = 16,
+                offset_1 = 18,
+                offset_2 = 20,
+                offset_3 = 22,
             )
         );
     }

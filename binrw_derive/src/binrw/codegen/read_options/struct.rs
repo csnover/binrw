@@ -1,6 +1,6 @@
-use super::{get_magic, PreludeGenerator};
+use super::{PreludeGenerator, get_magic};
 #[cfg(feature = "verbose-backtrace")]
-use crate::binrw::backtrace::BacktraceFrame;
+use crate::binrw::backtrace::source_text;
 use crate::binrw::codegen::{BOX, FORMAT};
 use crate::binrw::parser::Assert;
 use crate::{
@@ -8,10 +8,10 @@ use crate::{
         codegen::{
             get_assertions, get_endian, get_map_err, get_passed_args, get_try_calc,
             sanitization::{
-                make_ident, ARGS_TYPE_HINT, BACKTRACE_FRAME, BINREAD_TRAIT, COERCE_FN,
-                DBG_EPRINTLN, MAP_ARGS_TYPE_HINT, MAP_READER_TYPE_HINT, OPT, PARSE_FN_TYPE_HINT,
-                POS, READER, READ_FUNCTION, READ_METHOD, REQUIRED_ARG_TRAIT, SAVED_POSITION,
-                SEEK_FROM, SEEK_TRAIT, TEMP, THIS, WITH_CONTEXT,
+                ARGS_TYPE_HINT, BACKTRACE_FRAME, BINREAD_TRAIT, COERCE_FN, DBG_EPRINTLN,
+                MAP_ARGS_TYPE_HINT, MAP_READER_TYPE_HINT, OPT, PARSE_FN_TYPE_HINT, POS,
+                READ_FUNCTION, READ_METHOD, READER, REQUIRED_ARG_TRAIT, SAVED_POSITION, SEEK_FROM,
+                SEEK_TRAIT, TEMP, THIS, WITH_CONTEXT, make_ident,
             },
         },
         parser::{ErrContext, FieldMode, Input, Map, Struct, StructField},
@@ -20,8 +20,8 @@ use crate::{
 };
 use alloc::borrow::Cow;
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
-use syn::{spanned::Spanned, Ident};
+use quote::{ToTokens, quote, quote_spanned};
+use syn::{Ident, spanned::Spanned};
 
 pub(super) fn generate_unit_struct(
     input: &Input,
@@ -195,19 +195,6 @@ impl<'field> FieldGenerator<'field> {
     }
 
     fn wrap_debug(mut self) -> Self {
-        // Unwrapping the proc-macro2 Span is undesirable but necessary until its API
-        // is updated to allow retrieving line/column again. Using a separate function
-        // to unwrap just to make it clearer what needs to be undone later.
-        // <https://github.com/dtolnay/proc-macro2/pull/383>
-        #[cfg(all(feature = "verbose-backtrace", nightly, proc_macro))]
-        fn start_line(span: proc_macro2::Span) -> usize {
-            span.unwrap().start().line()
-        }
-        #[cfg(not(all(feature = "verbose-backtrace", nightly, proc_macro)))]
-        fn start_line(_: proc_macro2::Span) -> usize {
-            0
-        }
-
         if self.field.debug.is_some() {
             fn dbg_space(
                 name: &'static str,
@@ -227,7 +214,7 @@ impl<'field> FieldGenerator<'field> {
             let head = self.out;
             let reader_var = &self.outer_reader_var;
             let ident = &self.field.ident;
-            let start_line = start_line(ident.span());
+            let start_line = ident.span().start().line;
             let at = if start_line == 0 {
                 quote!(::core::line!())
             } else {
@@ -553,7 +540,7 @@ fn get_err_context(
     } else {
         #[cfg(feature = "verbose-backtrace")]
         let code = {
-            let code = BacktraceFrame::from_field(field).to_string();
+            let code = source_text(field).unwrap();
             if code.is_empty() {
                 quote! { ::core::option::Option::None }
             } else {

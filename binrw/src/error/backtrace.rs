@@ -286,17 +286,21 @@ mod tests {
                 panic!("Not AssertFail")
             }
 
-            if let [BacktraceFrame::Full {
-                code: None,
-                message: Cow::Borrowed(ERR1),
-                file: file!(),
-                line: l1,
-            }, BacktraceFrame::Full {
-                code: None,
-                message: Cow::Borrowed(ERR2),
-                file: file!(),
-                line: l2,
-            }, BacktraceFrame::Custom(last)] = &backtrace.frames[..]
+            if let [
+                BacktraceFrame::Full {
+                    code: None,
+                    message: Cow::Borrowed(ERR1),
+                    file: file!(),
+                    line: l1,
+                },
+                BacktraceFrame::Full {
+                    code: None,
+                    message: Cow::Borrowed(ERR2),
+                    file: file!(),
+                    line: l2,
+                },
+                BacktraceFrame::Custom(last),
+            ] = &backtrace.frames[..]
             {
                 assert_eq!(line1, *l1);
                 assert_eq!(line2, *l2);

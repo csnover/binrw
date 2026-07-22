@@ -132,7 +132,7 @@ fn display() {
 
 #[test]
 fn enum_is_eol() {
-    use binrw::{io::Cursor, BinRead};
+    use binrw::{BinRead, io::Cursor};
 
     #[allow(dead_code)]
     #[derive(BinRead, Debug)]
@@ -143,17 +143,21 @@ fn enum_is_eol() {
         B(u16),
     }
 
-    assert!(!Test::read_le(&mut Cursor::new(b"\0\0"))
-        .expect_err("accepted bad data")
-        .is_eof());
-    assert!(Test::read_le(&mut Cursor::new(b"\0"))
-        .expect_err("accepted bad data")
-        .is_eof());
+    assert!(
+        !Test::read_le(&mut Cursor::new(b"\0\0"))
+            .expect_err("accepted bad data")
+            .is_eof()
+    );
+    assert!(
+        Test::read_le(&mut Cursor::new(b"\0"))
+            .expect_err("accepted bad data")
+            .is_eof()
+    );
 }
 
 #[test]
 fn is_eof() {
-    use binrw::{io::Cursor, BinRead};
+    use binrw::{BinRead, io::Cursor};
 
     #[allow(dead_code)]
     #[derive(BinRead, Debug)]
@@ -167,9 +171,11 @@ fn is_eof() {
         _a: A,
     }
 
-    assert!(Test::read_le(&mut Cursor::new(b""))
-        .expect_err("accepted bad data")
-        .is_eof());
+    assert!(
+        Test::read_le(&mut Cursor::new(b""))
+            .expect_err("accepted bad data")
+            .is_eof()
+    );
 }
 
 #[test]
@@ -184,9 +190,9 @@ fn not_custom_error() {
 #[test]
 fn no_seek_struct() {
     use binrw::{
+        BinRead,
         error::BacktraceFrame,
         io::{Cursor, NoSeek},
-        BinRead,
     };
 
     #[derive(BinRead, Debug)]
@@ -219,9 +225,9 @@ fn no_seek_struct() {
 #[test]
 fn no_seek_data_enum() {
     use binrw::{
+        BinRead,
         error::BacktraceFrame,
         io::{Cursor, NoSeek},
-        BinRead,
     };
 
     #[allow(dead_code)]
@@ -258,9 +264,9 @@ fn no_seek_data_enum() {
 #[test]
 fn no_seek_unit_enum() {
     use binrw::{
+        BinRead,
         error::BacktraceFrame,
         io::{Cursor, NoSeek},
-        BinRead,
     };
 
     #[derive(BinRead, Debug)]
@@ -310,7 +316,7 @@ fn parse_backtrace_with_empty_comment_lines() {
 #[test]
 fn show_backtrace() {
     use alloc::borrow::Cow;
-    use binrw::{io::Cursor, BinReaderExt};
+    use binrw::{BinReaderExt, io::Cursor};
 
     let mut x = Cursor::new(b"\x06\0\0\0");
     let err = format!(
@@ -323,11 +329,7 @@ fn show_backtrace() {
     assert_eq!(
         err,
         if cfg!(feature = "verbose-backtrace") {
-            Cow::Borrowed(if cfg!(nightly) {
-                include_str!("./error/backtrace_verbose_nightly.stderr")
-            } else {
-                include_str!("./error/backtrace_verbose.stderr")
-            })
+            Cow::Borrowed(include_str!("./error/backtrace_verbose.stderr"))
         } else {
             let bt = include_str!("./error/backtrace.stderr");
             if cfg!(feature = "std") {
@@ -342,7 +344,7 @@ fn show_backtrace() {
 #[test]
 fn show_backtrace_2() {
     use alloc::borrow::Cow;
-    use binrw::{io::Cursor, BinReaderExt};
+    use binrw::{BinReaderExt, io::Cursor};
 
     let mut x = Cursor::new(b"\x06\0\0\0");
     let err = format!(
@@ -355,11 +357,7 @@ fn show_backtrace_2() {
     assert_eq!(
         err,
         if cfg!(feature = "verbose-backtrace") {
-            Cow::Borrowed(if cfg!(nightly) {
-                include_str!("./error/backtrace_2_verbose_nightly.stderr")
-            } else {
-                include_str!("./error/backtrace_2_verbose.stderr")
-            })
+            Cow::Borrowed(include_str!("./error/backtrace_2_verbose.stderr"))
         } else {
             let bt = include_str!("./error/backtrace_2.stderr");
             if cfg!(feature = "std") {
@@ -373,7 +371,7 @@ fn show_backtrace_2() {
 
 #[test]
 fn try_map_with_shadowing_box() {
-    use binrw::{io::Cursor, BinRead};
+    use binrw::{BinRead, io::Cursor};
 
     // Non-standard struct named Box intentionally shadows std::boxed::Box from the prelude
     #[allow(dead_code)]
@@ -386,14 +384,16 @@ fn try_map_with_shadowing_box() {
         value: u8,
     }
 
-    assert!(!Test::read_le(&mut Cursor::new(b"\0"))
-        .expect_err("accepted bad data")
-        .is_eof());
+    assert!(
+        !Test::read_le(&mut Cursor::new(b"\0"))
+            .expect_err("accepted bad data")
+            .is_eof()
+    );
 }
 
 #[test]
 fn err_context_with_shadowing_box() {
-    use binrw::{io::Cursor, BinRead};
+    use binrw::{BinRead, io::Cursor};
 
     // Non-standard struct named Box intentionally shadows std::boxed::Box from the prelude
     #[allow(dead_code)]
